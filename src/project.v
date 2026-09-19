@@ -14,7 +14,6 @@ module tt_um_vga_slot_machine (
     // ============================================================
     // VGA SIGNALS
     // ============================================================
-
     wire [9:0] pixel_x;
     wire [9:0] pixel_y;
     wire hsync;
@@ -32,28 +31,19 @@ module tt_um_vga_slot_machine (
     );
 
     // ============================================================
-    // OUTPUTS
+    // OUTPUTS (Direct 2-bit per channel)
     // ============================================================
-
     reg [1:0] vga_r;
     reg [1:0] vga_g;
     reg [1:0] vga_b;
 
-    assign uo_out = {
-        hsync,
-        vga_r,
-        vsync,
-        vga_g,
-        vga_b
-    };
-
+    assign uo_out = { hsync, vga_r, vsync, vga_g, vga_b };
     assign uio_out = 8'b0;
     assign uio_oe  = 8'b0;
 
     // ============================================================
-    // SLOT MACHINE
+    // SLOT MACHINE LOGIC
     // ============================================================
-
     localparam IDLE   = 3'd0;
     localparam SPIN1  = 3'd1;
     localparam SPIN2  = 3'd2;
@@ -61,28 +51,18 @@ module tt_um_vga_slot_machine (
     localparam RESULT = 3'd4;
 
     reg [2:0] state;
-
-    reg [2:0] reel1;
-    reg [2:0] reel2;
-    reg [2:0] reel3;
-
+    reg [2:0] reel1, reel2, reel3;
     reg [15:0] random_counter;
     reg [4:0] spin_timer;
-
-    reg lever_down;
-    reg start_last;
+    reg lever_down, start_last;
 
     wire start_button = ui_in[5];
     wire start_pressed = start_button & ~start_last;
 
-    // Pseudo-random modulo-7 logic without hardware divider
+    // Small hardware mod-7 using lightweight lookups
     wire [2:0] rnd1 = (random_counter[2:0] >= 3'd7) ? (random_counter[2:0] - 3'd7) : random_counter[2:0];
     wire [2:0] rnd2 = (random_counter[5:3] >= 3'd7) ? (random_counter[5:3] - 3'd7) : random_counter[5:3];
     wire [2:0] rnd3 = (random_counter[8:6] >= 3'd7) ? (random_counter[8:6] - 3'd7) : random_counter[8:6];
-
-    // ============================================================
-    // RANDOM NUMBER GENERATOR
-    // ============================================================
 
     always @(posedge clk) begin
         if (!rst_n || random_counter == 16'h0000) begin
@@ -94,10 +74,6 @@ module tt_um_vga_slot_machine (
             };
         end
     end
-
-    // ============================================================
-    // GAME LOGIC
-    // ============================================================
 
     always @(posedge clk) begin
         if (!rst_n) begin
@@ -166,68 +142,50 @@ module tt_um_vga_slot_machine (
                     end
                 end
 
-                default: begin
-                    state <= IDLE;
-                end
+                default: state <= IDLE;
             endcase
         end
     end
 
     // ============================================================
-    // GRAPHICS
+    // LIGHTWEIGHT GRAPHICS (NO HARDWARE MULTIPLIERS)
     // ============================================================
-
-    reg [7:0] r;
-    reg [7:0] g;
-    reg [7:0] b;
-
     function automatic symbol_pixel;
         input [2:0] symbol;
-        input [6:0] sx;
-        input [6:0] sy;
+        input [5:0] sx; // Reduced to 6-bit localized offsets
+        input [5:0] sy;
         reg result;
-        integer dx;
-        integer dy;
         begin
             result = 1'b0;
-            dx = 0;
-            dy = 0;
-
             case (symbol)
                 3'd0: begin // CHERRY
                     if ((sx > 15 && sx < 36 && sy > 34 && sy < 55) ||
-                        (sx > 30 && sx < 51 && sy > 29 && sy < 50))
-                        result = 1'b1;
-
-                    if ((sx > 27 && sx < 31 && sy > 12 && sy < 35) ||
+                        (sx > 30 && sx < 51 && sy > 29 && sy < 50) ||
+                        (sx > 27 && sx < 31 && sy > 12 && sy < 35) ||
                         (sx > 29 && sx < 43 && sy > 10 && sy < 14))
                         result = 1'b1;
                 end
 
-                3'd1: begin // LEMON
+                3'd1: begin // LEMON (Box approximation)
                     if (sx > 13 && sx < 52 && sy > 15 && sy < 52)
                         result = 1'b1;
                 end
 
-                3'd2: begin // ORANGE
-                    dx = sx - 32;
-                    dy = sy - 35;
-                    if ((dx * dx + dy * dy) < 400)
+                3'd2: begin // ORANGE (Approximated with bounding octagonal bounds to avoid dx*dx multiplier!)
+                    if (sx > 18 && sx < 46 && sy > 21 && sy < 49 &&
+                       (sx + sy > 45) && (sx + sy < 89))
                         result = 1'b1;
                 end
 
                 3'd3: begin // SEVEN
-                    if (sy >= 10 && sy < 18)
-                        result = 1'b1;
-                    if (sx >= 45 && sx < 54 && sy >= 10 && sy < 55)
+                    if ((sy >= 10 && sy < 18) || (sx >= 45 && sx < 54 && sy >= 10 && sy < 55))
                         result = 1'b1;
                 end
 
                 3'd4: begin // DIAMOND
-                    if ((sx >= 32 - sy) && (sx <= 32 + sy) && sy < 32)
-                        result = 1'b1;
-                    if ((sx >= 32 - (63-sy)) && (sx <= 32 + (63-sy)) && sy >= 32)
-                        result = 1'b1;
+                    if (((sx >= 32 - sy) && (sx <= 32 + sy) && sy < 32) ||
+                        ((sx >= 32 - (63-sy)) && (sx <= 32 + (63-sy)) && sy >= 32))
+                        result = 1 me_1;
                 end
 
                 3'd5: begin // BAR
@@ -236,145 +194,101 @@ module tt_um_vga_slot_machine (
                 end
 
                 3'd6: begin // BELL
-                    if (sx > 16 && sx < 48 && sy > 18 && sy < 50)
-                        result = 1'b1;
-                    if (sx > 11 && sx < 53 && sy > 45 && sy < 53)
+                    if ((sx > 16 && sx < 48 && sy > 18 && sy < 50) ||
+                        (sx > 11 && sx < 53 && sy > 45 && sy < 53))
                         result = 1'b1;
                 end
 
                 default: result = 1'b0;
             endcase
-
             symbol_pixel = result;
         end
     endfunction
 
-    // ============================================================
-    // VGA DRAWING
-    // ============================================================
-
+    // Direct 2-bit RGB logic
     always @(*) begin
-        // Background
-        r = 8'd8;
-        g = 8'd8;
-        b = 8'd15;
+        reg [1:0] r, g, b;
 
-        // Machine body
+        // Default Background (Dark Blue/Purple)
+        r = 2'b00; g = 2'b00; b = 2'b01;
+
+        // Machine Body
         if (pixel_x >= 60 && pixel_x < 580 && pixel_y >= 60 && pixel_y < 440) begin
-            r = 8'd45;
-            g = 8'd20;
-            b = 8'd55;
+            r = 2'b01; g = 2'b00; b = 2'b01;
         end
 
-        // Top title area
+        // Header / Title Banner
         if (pixel_x >= 90 && pixel_x < 550 && pixel_y >= 75 && pixel_y < 115) begin
-            r = 8'd220;
-            g = 8'd40;
-            b = 8'd40;
+            r = 2'b11; g = 2'b00; b = 2'b00;
         end
 
-        // Reel Windows
-        if ((pixel_x >= 100 && pixel_x < 230 && pixel_y >= 140 && pixel_y < 300) ||
-            (pixel_x >= 250 && pixel_x < 380 && pixel_y >= 140 && pixel_y < 300) ||
-            (pixel_x >= 400 && pixel_x < 530 && pixel_y >= 140 && pixel_y < 300)) begin
-            r = 8'd240;
-            g = 8'd230;
-            b = 8'd180;
-        end
-
-        // Reel 1 Symbol
-        if (pixel_x >= 130 && pixel_x < 194 && pixel_y >= 185 && pixel_y < 249) begin
-            if (symbol_pixel(reel1, pixel_x - 130, pixel_y - 185)) begin
-                r = 8'd230;
-                g = 8'd30;
-                b = 8'd30;
+        // Reel Windows Shared Comparison
+        if (pixel_y >= 140 && pixel_y < 300) begin
+            if ((pixel_x >= 100 && pixel_x < 230) ||
+                (pixel_x >= 250 && pixel_x < 380) ||
+                (pixel_x >= 400 && pixel_x < 530)) begin
+                r = 2'b11; g = 2'b11; b = 2'b10;
             end
         end
 
-        // Reel 2 Symbol
-        if (pixel_x >= 280 && pixel_x < 344 && pixel_y >= 185 && pixel_y < 249) begin
-            if (symbol_pixel(reel2, pixel_x - 280, pixel_y - 185)) begin
-                r = 8'd30;
-                g = 8'd80;
-                b = 8'd230;
+        // Reel Symbols
+        if (pixel_y >= 185 && pixel_y < 249) begin
+            if (pixel_x >= 130 && pixel_x < 194) begin
+                if (symbol_pixel(reel1, pixel_x[5:0] - 6'd2, pixel_y[5:0] - 6'd57)) begin
+                    r = 2'b11; g = 2'b00; b = 2'b00;
+                end
+            end else if (pixel_x >= 280 && pixel_x < 344) begin
+                if (symbol_pixel(reel2, pixel_x[5:0] - 6'd24, pixel_y[5:0] - 6'd57)) begin
+                    r = 2'b00; g = 2'b01; b = 2'b11;
+                end
+            end else if (pixel_x >= 430 && pixel_x < 494) begin
+                if (symbol_pixel(reel3, pixel_x[5:0] - 6'd46, pixel_y[5:0] - 6'd57)) begin
+                    r = 2'b11; g = 2'b10; b = 2'b00;
+                end
             end
         end
 
-        // Reel 3 Symbol
-        if (pixel_x >= 430 && pixel_x < 494 && pixel_y >= 185 && pixel_y < 249) begin
-            if (symbol_pixel(reel3, pixel_x - 430, pixel_y - 185)) begin
-                r = 8'd240;
-                g = 8'd170;
-                b = 8'd20;
-            end
-        end
-
-        // Lever Housing
+        // Lever Housing & Shaft
         if (pixel_x >= 535 && pixel_x < 565 && pixel_y >= 150 && pixel_y < 340) begin
-            r = 8'd70;
-            g = 8'd70;
-            b = 8'd75;
+            r = 2'b01; g = 2'b01; b = 2'b01;
         end
-
-        // Lever Shaft
         if (pixel_x >= 545 && pixel_x < 555) begin
-            if (!lever_down && pixel_y >= 150 && pixel_y < 250) begin
-                r = 8'd190;
-                g = 8'd190;
-                b = 8'd190;
-            end
-            if (lever_down && pixel_y >= 200 && pixel_y < 300) begin
-                r = 8'd190;
-                g = 8'd190;
-                b = 8'd190;
+            if ((!lever_down && pixel_y >= 150 && pixel_y < 250) ||
+                ( lever_down && pixel_y >= 200 && pixel_y < 300)) begin
+                r = 2'b11; g = 2'b11; b = 2'b11;
             end
         end
 
-        // Lever Ball
-        if (!lever_down) begin
-            if ((pixel_x - 550) * (pixel_x - 550) + (pixel_y - 145) * (pixel_y - 145) < 225) begin
-                r = 8'd220;
-                g = 8'd30;
-                b = 8'd30;
-            end
-        end else begin
-            if ((pixel_x - 550) * (pixel_x - 550) + (pixel_y - 300) * (pixel_y - 300) < 225) begin
-                r = 8'd220;
-                g = 8'd30;
-                b = 8'd30;
+        // Lever Ball (Box bounding instead of expensive circle multipliers)
+        if (pixel_x >= 538 && pixel_x < 562) begin
+            if ((!lever_down && pixel_y >= 133 && pixel_y < 157) ||
+                ( lever_down && pixel_y >= 288 && pixel_y < 312)) begin
+                r = 2'b11; g = 2'b00; b = 2'b00;
             end
         end
 
         // Result Light
-        if (state == RESULT) begin
-            if (pixel_x >= 180 && pixel_x < 460 && pixel_y >= 330 && pixel_y < 370) begin
-                if (reel1 == reel2 && reel2 == reel3) begin // Jackpot
-                    r = 8'd255; g = 8'd210; b = 8'd0;
-                end else if ((reel1 == reel2) || (reel2 == reel3) || (reel1 == reel3)) begin // Match 2
-                    r = 8'd20;  g = 8'd220; b = 8'd50;
-                end else begin // Loss
-                    r = 8'd150; g = 8'd20;  b = 8'd20;
-                end
+        if (state == RESULT && pixel_x >= 180 && pixel_x < 460 && pixel_y >= 330 && pixel_y < 370) begin
+            if (reel1 == reel2 && reel2 == reel3) begin
+                r = 2'b11; g = 2'b11; b = 2'b00; // Jackpot
+            end else if ((reel1 == reel2) || (reel2 == reel3) || (reel1 == reel3)) begin
+                r = 2'b00; g = 2'b11; b = 2'b01; // 2 Match
+            end else begin
+                r = 2'b10; g = 2'b00; b = 2'b00; // Loss
             end
         end
 
         // Outer Border
         if ((pixel_x >= 60 && pixel_x < 68) || (pixel_x >= 572 && pixel_x < 580) ||
             (pixel_y >= 60 && pixel_y < 68) || (pixel_y >= 432 && pixel_y < 440)) begin
-            r = 8'd255;
-            g = 8'd190;
-            b = 8'd0;
+            r = 2'b11; g = 2'b11; b = 2'b00;
         end
 
-        // Convert to 2-bit VGA Output
+        // Output multiplexer logic
         if (!display_on) begin
-            vga_r = 2'b00;
-            vga_g = 2'b00;
-            vga_b = 2'b00;
+            vga_r = 2'b00; vga_g = 2'b00; vga_b = 2'b00;
         end else begin
-            vga_r = r[7:6];
-            vga_g = g[7:6];
-            vga_b = b[7:6];
+            vga_r = r; vga_g = g; vga_b = b;
         end
     end
 
