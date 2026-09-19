@@ -31,13 +31,25 @@ module tt_um_vga_slot_machine (
     );
 
     // ============================================================
-    // OUTPUTS (Direct 2-bit per channel)
+    // OUTPUTS (Tiny Tapeout VGA Pmod Bit Mapping)
     // ============================================================
     reg [1:0] vga_r;
     reg [1:0] vga_g;
     reg [1:0] vga_b;
 
-    assign uo_out = { hsync, vga_r, vsync, vga_g, vga_b };
+    // Bit mapping expected by test environment:
+    // uo_out = {hsync, B[0], G[0], R[0], vsync, B[1], G[1], R[1]}
+    assign uo_out = {
+        hsync,
+        vga_b[0],
+        vga_g[0],
+        vga_r[0],
+        vsync,
+        vga_b[1],
+        vga_g[1],
+        vga_r[1]
+    };
+
     assign uio_out = 8'b0;
     assign uio_oe  = 8'b0;
 
