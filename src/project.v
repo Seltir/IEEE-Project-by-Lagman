@@ -75,7 +75,7 @@ module tt_um_vga_slot_machine (
     wire start_button = ui_in[5];
     wire start_pressed = start_button & ~start_last;
 
-    // Direct modulo 7 replacement for pseudo-random mapping
+    // Pseudo-random modulo-7 logic without hardware divider
     wire [2:0] rnd1 = (random_counter[2:0] >= 3'd7) ? (random_counter[2:0] - 3'd7) : random_counter[2:0];
     wire [2:0] rnd2 = (random_counter[5:3] >= 3'd7) ? (random_counter[5:3] - 3'd7) : random_counter[5:3];
     wire [2:0] rnd3 = (random_counter[8:6] >= 3'd7) ? (random_counter[8:6] - 3'd7) : random_counter[8:6];
@@ -218,7 +218,7 @@ module tt_um_vga_slot_machine (
 
                 3'd3: begin // SEVEN
                     if (sy >= 10 && sy < 18)
-                        result = 1 me_1;
+                        result = 1'b1;
                     if (sx >= 45 && sx < 54 && sy >= 10 && sy < 55)
                         result = 1'b1;
                 end
@@ -278,7 +278,7 @@ module tt_um_vga_slot_machine (
             (pixel_x >= 250 && pixel_x < 380 && pixel_y >= 140 && pixel_y < 300) ||
             (pixel_x >= 400 && pixel_x < 530 && pixel_y >= 140 && pixel_y < 300)) begin
             r = 8'd240;
-            g = 8 me_230;
+            g = 8'd230;
             b = 8'd180;
         end
 
