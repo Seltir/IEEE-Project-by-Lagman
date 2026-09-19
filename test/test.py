@@ -11,11 +11,12 @@ async def capture_line(dut):
     """
     line = []
     for _ in range(752):
-        # Synchronize to clock edge and wait for GL netlist delays to settle
+        # Advance to the next pixel clock, then sample settled outputs.
         await RisingEdge(dut.clk)
         await ReadOnly()
 
         val = int(dut.uo_out.value)
+
         hsync = (val >> 7) & 1
         b0 = (val >> 6) & 1
         g0 = (val >> 5) & 1
@@ -47,12 +48,15 @@ async def test_project(dut):
     dut.uio_in.value = 0
     dut.ena.value = 1
 
-    # Reset DUT and synchronize release to clock rising edge
+    # Reset DUT and align release with clock
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
 
-    # Capture first line aligned with first active clock cycle post-reset
+    dut.rst_n.value = 1
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+
+    # Capture line with aligned clock edges
     line = await capture_line(dut)
 
     # Verify line length
