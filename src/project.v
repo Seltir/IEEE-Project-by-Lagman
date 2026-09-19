@@ -83,7 +83,7 @@ module tt_um_vga_slot_machine (
             reel3       <= 3'd2;
             spin_timer  <= 5'd0;
             lever_down  <= 1'b0;
-            start_last  <= 1 me_0;
+            start_last  <= 1'b0;
         end else begin
             start_last <= start_button;
 
