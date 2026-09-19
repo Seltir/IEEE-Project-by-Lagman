@@ -1,6 +1,6 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles, ReadOnly
+from cocotb.triggers import RisingEdge, ReadOnly, ClockCycles
 
 
 async def capture_line(dut):
@@ -11,6 +11,9 @@ async def capture_line(dut):
     """
     line = []
     for _ in range(752):
+        await RisingEdge(dut.clk)
+        await ReadOnly()
+
         val = int(dut.uo_out.value)
         hsync = (val >> 7) & 1
         b0 = (val >> 6) & 1
@@ -26,7 +29,6 @@ async def capture_line(dut):
         b = (b1 << 1) | b0
 
         line.append((hsync, vsync, r, g, b))
-        await ClockCycles(dut.clk, 1)
 
     return line
 
@@ -48,9 +50,8 @@ async def test_project(dut):
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, 10)
     dut.rst_n.value = 1
-    await ReadOnly()
 
-    # Capture first line immediately after reset
+    # Capture first line immediately after reset settling
     line = await capture_line(dut)
 
     # Verify line length
