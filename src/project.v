@@ -59,7 +59,7 @@ module tt_um_vga_slot_machine (
     wire start_button = ui_in[5];
     wire start_pressed = start_button & ~start_last;
 
-    // Small hardware mod-7 using lightweight lookups
+    // Hardware mod-7 lookup
     wire [2:0] rnd1 = (random_counter[2:0] >= 3'd7) ? (random_counter[2:0] - 3'd7) : random_counter[2:0];
     wire [2:0] rnd2 = (random_counter[5:3] >= 3'd7) ? (random_counter[5:3] - 3'd7) : random_counter[5:3];
     wire [2:0] rnd3 = (random_counter[8:6] >= 3'd7) ? (random_counter[8:6] - 3'd7) : random_counter[8:6];
@@ -83,7 +83,7 @@ module tt_um_vga_slot_machine (
             reel3       <= 3'd2;
             spin_timer  <= 5'd0;
             lever_down  <= 1'b0;
-            start_last  <= 1'b0;
+            start_last  <= 1 me_0;
         end else begin
             start_last <= start_button;
 
@@ -152,7 +152,7 @@ module tt_um_vga_slot_machine (
     // ============================================================
     function automatic symbol_pixel;
         input [2:0] symbol;
-        input [5:0] sx; // Reduced to 6-bit localized offsets
+        input [5:0] sx;
         input [5:0] sy;
         reg result;
         begin
@@ -166,12 +166,12 @@ module tt_um_vga_slot_machine (
                         result = 1'b1;
                 end
 
-                3'd1: begin // LEMON (Box approximation)
+                3'd1: begin // LEMON
                     if (sx > 13 && sx < 52 && sy > 15 && sy < 52)
                         result = 1'b1;
                 end
 
-                3'd2: begin // ORANGE (Approximated with bounding octagonal bounds to avoid dx*dx multiplier!)
+                3'd2: begin // ORANGE
                     if (sx > 18 && sx < 46 && sy > 21 && sy < 49 &&
                        (sx + sy > 45) && (sx + sy < 89))
                         result = 1'b1;
@@ -185,7 +185,7 @@ module tt_um_vga_slot_machine (
                 3'd4: begin // DIAMOND
                     if (((sx >= 32 - sy) && (sx <= 32 + sy) && sy < 32) ||
                         ((sx >= 32 - (63-sy)) && (sx <= 32 + (63-sy)) && sy >= 32))
-                        result = 1 me_1;
+                        result = 1'b1;
                 end
 
                 3'd5: begin // BAR
@@ -209,7 +209,7 @@ module tt_um_vga_slot_machine (
     always @(*) begin
         reg [1:0] r, g, b;
 
-        // Default Background (Dark Blue/Purple)
+        // Background (Dark Blue/Purple)
         r = 2'b00; g = 2'b00; b = 2'b01;
 
         // Machine Body
@@ -222,7 +222,7 @@ module tt_um_vga_slot_machine (
             r = 2'b11; g = 2'b00; b = 2'b00;
         end
 
-        // Reel Windows Shared Comparison
+        // Reel Windows
         if (pixel_y >= 140 && pixel_y < 300) begin
             if ((pixel_x >= 100 && pixel_x < 230) ||
                 (pixel_x >= 250 && pixel_x < 380) ||
@@ -259,7 +259,7 @@ module tt_um_vga_slot_machine (
             end
         end
 
-        // Lever Ball (Box bounding instead of expensive circle multipliers)
+        // Lever Ball
         if (pixel_x >= 538 && pixel_x < 562) begin
             if ((!lever_down && pixel_y >= 133 && pixel_y < 157) ||
                 ( lever_down && pixel_y >= 288 && pixel_y < 312)) begin
