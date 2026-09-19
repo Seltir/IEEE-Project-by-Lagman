@@ -1,6 +1,6 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, ReadOnly, ClockCycles
+from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge
 
 
 async def capture_line(dut):
@@ -11,6 +11,7 @@ async def capture_line(dut):
     """
     line = []
     for _ in range(752):
+        # Synchronize to clock edge and wait for GL netlist delays to settle
         await RisingEdge(dut.clk)
         await ReadOnly()
 
@@ -46,12 +47,12 @@ async def test_project(dut):
     dut.uio_in.value = 0
     dut.ena.value = 1
 
-    # Reset DUT
+    # Reset DUT and synchronize release to clock rising edge
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, 10)
     dut.rst_n.value = 1
 
-    # Capture first line immediately after reset settling
+    # Capture first line aligned with first active clock cycle post-reset
     line = await capture_line(dut)
 
     # Verify line length
