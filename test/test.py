@@ -3,6 +3,23 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, ReadOnly, RisingEdge
 
 
+async def wait_for_line_start(dut):
+    """Wait for HSYNC to transition from low to high (pixel 0 start)."""
+    await RisingEdge(dut.clk)
+    await ReadOnly()
+    previous_hsync = (int(dut.uo_out.value) >> 7) & 1
+
+    while True:
+        await RisingEdge(dut.clk)
+        await ReadOnly()
+        current_hsync = (int(dut.uo_out.value) >> 7) & 1
+
+        if previous_hsync == 0 and current_hsync == 1:
+            return
+
+        previous_hsync = current_hsync
+
+
 async def capture_line(dut):
     """
     Captures one full horizontal line (752 cycles).
@@ -11,10 +28,6 @@ async def capture_line(dut):
     """
     line = []
     for _ in range(752):
-        # Advance to the next pixel clock, then sample settled outputs.
-        await RisingEdge(dut.clk)
-        await ReadOnly()
-
         val = int(dut.uo_out.value)
 
         hsync = (val >> 7) & 1
@@ -32,7 +45,42 @@ async def capture_line(dut):
 
         line.append((hsync, vsync, r, g, b))
 
+        await RisingEdge(dut.clk)
+        await ReadOnly()
+
     return line
+
+
+async def measure_hsync_period(dut):
+    """
+    Measures the exact high and low duration of HSYNC in clock cycles.
+    """
+    # 1. Wait for HSYNC to enter the active-low pulse state
+    while True:
+        await RisingEdge(dut.clk)
+        await ReadOnly()
+        if ((int(dut.uo_out.value) >> 7) & 1) == 0:
+            break
+
+    # 2. Count low cycles
+    low_count = 0
+    while True:
+        low_count += 1
+        await RisingEdge(dut.clk)
+        await ReadOnly()
+        if ((int(dut.uo_out.value) >> 7) & 1) == 1:
+            break
+
+    # 3. Count high cycles
+    high_count = 0
+    while True:
+        high_count += 1
+        await RisingEdge(dut.clk)
+        await ReadOnly()
+        if ((int(dut.uo_out.value) >> 7) & 1) == 0:
+            break
+
+    return high_count, low_count
 
 
 @cocotb.test()
@@ -48,23 +96,28 @@ async def test_project(dut):
     dut.uio_in.value = 0
     dut.ena.value = 1
 
-    # Reset DUT and align release with clock
+    # Reset DUT
     dut.rst_n.value = 0
     await ClockCycles(dut.clk, 10)
-
     dut.rst_n.value = 1
-    await RisingEdge(dut.clk)
-    await ReadOnly()
 
-    # Capture line with aligned clock edges
+    # Measure exact HSYNC pulse widths directly
+    high_count, low_count = await measure_hsync_period(dut)
+
+    assert high_count == 656, (
+        f"Expected 656 HSYNC-high cycles, got {high_count}"
+    )
+    assert low_count == 96, (
+        f"Expected 96 HSYNC-low cycles, got {low_count}"
+    )
+
+    # Synchronize capture to line start (0 -> 1 HSYNC edge)
+    await wait_for_line_start(dut)
     line = await capture_line(dut)
 
-    # Verify line length
+    # Verify line length and exact pattern alignment
     assert len(line) == 752, f"Expected 752 pixels per line, got {len(line)}"
 
-    # Check HSYNC behavior
-    # Pixels 0..655 -> HSYNC = 1 (active video + front porch)
-    # Pixels 656..751 -> HSYNC = 0 (sync pulse = 96 pixels)
     hsync_pattern = [p[0] for p in line]
     expected_hsync = [1] * 656 + [0] * 96
 
